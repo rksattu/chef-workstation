@@ -46,9 +46,11 @@ module ChefCLI
         end
 
         def render_parallel_jobs(header, actions, prefix: "")
-          multispinner = TTY::Spinner::Multi.new("[:spinner] #{header}")
+          multispinner = TTY::Spinner::Multi.new("[:spinner] #{header}", style: {
+  top: '', middle: ' ├─ ', bottom: ' └─ ' })
+
           actions.each do |a|
-            multispinner.register(":spinner #{a.prefix} :status") do |spinner|
+            multispinner.register("[:spinner] #{a.prefix} :status") do |spinner|
               reporter = StatusReporter.new(spinner, prefix: prefix, key: :status)
               a.run(reporter)
             end
@@ -60,7 +62,7 @@ module ChefCLI
         #      between render_job and render_parallel
         def render_job(msg, prefix: "", &block)
           klass = ChefCLI::UI.const_get(ChefCLI::Config.dev.spinner)
-          spinner = klass.new("[:spinner] :prefix :status", output: @location)
+          spinner = klass.new("[:spinner]:prefix :status", output: @location)
           reporter = StatusReporter.new(spinner, prefix: prefix, key: :status)
           reporter.update(msg)
           spinner.run { yield(reporter) }

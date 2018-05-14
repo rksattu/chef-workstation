@@ -81,30 +81,37 @@ module ChefCLI
            description:  T.install_description(Action::InstallChef::Base::MIN_CHEF_VERSION)
 
         def run(params)
-          validate_params(cli_arguments)
-          configure_chef
-          target_hosts = TargetResolver.new(cli_arguments.shift, config).targets
-          temp_cookbook, initial_status_msg = generate_temp_cookbook(cli_arguments)
-          if target_hosts.length == 1
-            run_single_target(initial_status_msg, target_hosts[0], temp_cookbook )
-          else
+          UI::Terminal.render_job("Getting ready to run", prefix: "") do |reporter|
+            validate_params(cli_arguments)
+            configure_chef
+
+            target_argument = cli_arguments.shift
+
+            reporter.update("Generating policy...")
+            temp_cookbook, initial_status_msg = generate_temp_cookbook(cli_arguments)
+            local_policy_path = generate_policy(temp_cookbook)
+
+            reporter.update("Resolving targets...")
+            target_hosts = TargetResolver.new(target_argument, config).targets
+            reporter.success("Resolved targets")
+
             @multi_target = true
-            run_multi_target(initial_status_msg, target_hosts, temp_cookbook)
+            run_multi_target(initial_status_msg, target_hosts, local_policy_path)
           end
         end
 
-        def run_single_target(initial_status_msg, target_host, temp_cookbook)
+        def run_single_target(initial_status_msg, target_host, local_policy_path)
           connect_target(target_host)
           prefix = "[#{target_host.hostname}]"
           UI::Terminal.render_job(TS.install_chef.verifying, prefix: prefix) do |reporter|
             install(target_host, reporter)
           end
           UI::Terminal.render_job(initial_status_msg, prefix: "[#{target_host.hostname}]") do |reporter|
-            converge(reporter, temp_cookbook, target_host)
+            converge(reporter, local_policy_path, target_host)
           end
         end
 
-        def run_multi_target(initial_status_msg, target_hosts, temp_cookbook)
+        def run_multi_target(initial_status_msg, target_hosts, local_policy_path)
           # Our multi-host UX does not show a line item per action,
           # but rather a line-item per connection.
           jobs = target_hosts.map do |target_host|
@@ -114,7 +121,7 @@ module ChefCLI
               reporter.update(TS.install_chef.verifying)
               install(target_host, reporter)
               reporter.update(initial_status_msg)
-              converge(reporter, temp_cookbook, target_host)
+              converge(reporter, local_policy_path, target_host)
             end
           end
           UI::Terminal.render_parallel_jobs(TS.converge.multi_header, jobs)
@@ -221,6 +228,19 @@ module ChefCLI
           [temp_cookbook, initial_status_msg]
         end
 
+        def generate_policy(cookbook)
+          ChefDK::PolicyfileServices::Install.new(ui: ChefDK::UI.null(),
+                                                  root_dir: cookbook.path).run
+          lock_path = File.join(cookbook.path, "Policyfile.lock.json")
+          es = ChefDK::PolicyfileServices::ExportRepo.new(policyfile: lock_path,
+                                                          root_dir: cookbook.path,
+                                                          export_dir: File.join(cookbook.path, "export"),
+                                                          archive: true,
+                                                          force: true)
+          es.run
+          es.archive_file_location
+        end
+
         def recipe_strategy?(cli_arguments)
           cli_arguments.size == 1
         end
@@ -262,8 +282,8 @@ module ChefCLI
 
         # Runs the Converge action and renders UI updates as
         # the action reports back
-        def converge(reporter, temp_cookbook, target_host)
-          converge_args = { local_cookbook: temp_cookbook, target_host: target_host }
+        def converge(reporter, local_policy_path, target_host)
+          converge_args = { local_policy_path: local_policy_path, target_host: target_host }
           converger = Action::ConvergeTarget.new(converge_args)
           converger.run do |event, data|
             case event
@@ -279,9 +299,7 @@ module ChefCLI
               handle_message(event, data, reporter)
             end
           end
-          temp_cookbook.delete
         end
-
       end
     end
   end

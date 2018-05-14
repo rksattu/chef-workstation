@@ -10,11 +10,11 @@ module ChefCLI::Action
   class ConvergeTarget < Base
 
     def perform_action
-      local_cookbook = config.delete :local_cookbook
+      local_policy_path = config.delete :local_policy_path
       remote_tmp = target_host.run_command!(mktemp)
       remote_dir_path = escape_windows_path(remote_tmp.stdout.strip)
       notify(:creating_remote_policy)
-      remote_policy_path = create_remote_policy(local_cookbook, remote_dir_path)
+      remote_policy_path = create_remote_policy(local_policy_path, remote_dir_path)
       remote_config_path = create_remote_config(remote_dir_path)
       create_remote_handler(remote_dir_path)
 
@@ -35,8 +35,7 @@ module ChefCLI::Action
       end
     end
 
-    def create_remote_policy(local_cookbook, remote_dir_path)
-      local_policy_path = generate_policy(local_cookbook)
+    def create_remote_policy(local_policy_path, remote_dir_path)
       remote_policy_path = File.join(remote_dir_path, File.basename(local_policy_path))
       begin
         target_host.upload_file(local_policy_path, remote_policy_path)
@@ -86,19 +85,6 @@ module ChefCLI::Action
         handler_file.unlink
       end
       remote_handler_path
-    end
-
-    def generate_policy(local_cookbook)
-      ChefDK::PolicyfileServices::Install.new(ui: ChefDK::UI.null(),
-                                              root_dir: local_cookbook.path).run
-      lock_path = File.join(local_cookbook.path, "Policyfile.lock.json")
-      es = ChefDK::PolicyfileServices::ExportRepo.new(policyfile: lock_path,
-                                                      root_dir: local_cookbook.path,
-                                                      export_dir: File.join(local_cookbook.path, "export"),
-                                                      archive: true,
-                                                      force: true)
-      es.run
-      es.archive_file_location
     end
 
     def handle_ccr_error
