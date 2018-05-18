@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+require "chef-run/log"
 require "mixlib/config"
 require "fileutils"
 require "pathname"
@@ -130,7 +131,8 @@ module ChefRun
     end
 
     config_context :chef do
-      default(:cookbook_repo_paths, ChefConfig::Config[:cookbook_path])
+      ChefConfig::WorkstationConfigLoader.new(nil, ChefRun::Log).load
+      default(:cookbook_repo_paths, [ChefConfig::Config[:cookbook_path]].flatten)
     end
 
     config_context :data_collector do
