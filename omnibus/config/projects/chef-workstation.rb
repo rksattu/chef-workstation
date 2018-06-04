@@ -65,6 +65,7 @@ override "xproto", version: "7.0.28"
 override "zlib", version: "1.2.11"
 override "libzmq", version: "4.0.7"
 override "openssl", version: "1.0.2o"
+override "rust", version: "1.26.1"
 
 dependency "preparation"
 
